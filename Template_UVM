@@ -1,1 +1,375 @@
 UVM--Universal Verification Methodology 
+// Name : Kutala Divya 
+// UVM_Template
+Edaplayground :https://edaplayground.com/x/8mad
+// Include UVM package and UVM macros
+import uvm_pkg::
+`include "uvm_macros.svh"
+  //Include Files--In correct order
+  `include "interface.sv"
+  `include "sequence_item.sv"
+  `include "sequence.sv"
+  `include "sequencer.sv
+  `include "driver.sv
+  `include "monitor.sv"
+  `include "scoreboard.sv"
+  `include "subscriber.sv"
+  `include "agent.sv"
+  `include "environment.sv"
+  `include "test.sv"
+  
+module top;
+  logic clock;
+  //Interface 
+  dut_interface intf(.clock(clock))//Clock act as port.Clock is coming from top module so we need to define it as port.
+  
+  //instantiation
+  DUT dut(.clock(intf.clock))
+  
+  //Clock Generation
+  initial 
+    begin
+      clock=0;
+    end
+  always #5 clock = ~clock ;
+  //or
+  initial
+    begin
+      clock=0;
+      forever
+        begin
+          clock = ~ clock;
+          #5;
+        end
+    end
+  initial
+    begin :for_forever
+      #5000;
+      $display("Finished");
+      $finish();
+    end :for_forever
+  // Wave form
+  initial 
+    begin
+      $dumpfile("dump.vcd");
+      $dumpvars;
+    end
+  //Run_Test
+  initial
+    begin
+      run_test("test");//we need to mention test class name
+    end
+  //Interface is a physical entity which we can not instantiate in dynamic entities like classes. So we need to pass a handle to that interface
+  initial 
+    begin
+      uvm_config_db # (virtual dut_interface)::set(null,"*","intf",intf);
+    end
+endmodule
+----------------------------------------------------------------
+interface.sv
+----------------------------------------------------------------
+interface dut_interface(input clock);
+  //write all inputs and output with either datatype as logic or relevant datatype
+logic a;
+logic b;
+//you can write modports and clocking block
+endinterface
+
+----------------------------------------------------------------
+sequence_item.sv
+----------------------------------------------------------------
+class dut_seqitem extends uvm_sequence_item;//Object class
+  `uvm_object_utils(dut_seqitem)//object factory registration
+  //for example
+  rand a,b;
+  bit c;
+  //if you want to track or register these variable u can use uvm_macros
+  `uvm_field_int(a,UVM_ALL_ON)
+  `uvm_field_int(b,UVM_ALL_ON)
+  `uvm_field_int(c,UVM_ALL_ON)
+  // New Constructor---deriving the parent props to user defined class
+  function new(string name ="dut_seqitem");
+    super.new(name);
+    `uvm_info("[SEQ-ITEM]","Sequence_item in constructor",UVM_MEDIUM)
+  endfunction
+  // Constraints --optional
+  constraint c_A { a inside {[0:10]};}
+endclass
+----------------------------------------------------------------------
+sequence.sv
+----------------------------------------------------------------------
+class dut_seq extends uvm_sequence#(dut_seqitem);//Object class-parameterized
+  `uvm_object_utils(dut_seq);
+  
+  // seqitem handle
+  dut_seqitem seq;
+  int count=10;//we can also write in test class
+  function new(string name="dut_seq");
+    super.new(name);
+    `uvm_info("[SEQ]","Sequence in constructor",UVM_MEDIUM)
+  endfunction
+  
+  // Body - object creation and randomization
+  task body;
+    `uvm_info("[SEQ]","Sequence in body:)",UVM_MEDIUM)
+    repeat(count)
+      begin
+        //`uvm_do(seq)
+        //start_item(seq)
+        //seq.randomize();
+        //finish_item(seq);
+        wait_for_grant();
+        seq=dut_seqitem::type_id::create("seq");
+        assert(seq.randomize());
+        else
+          `uvm_error("[SEQ]","Randomization failed")
+        send_request(seq);
+        wait_for_item_done();
+        $display("----------------------------------------------------");
+        seq.print();
+        $display("----------------------------------------------------");
+      end
+  endtask
+endclass
+----------------------------------------------------------------------
+sequencer.sv
+----------------------------------------------------------------------
+class dut_seqr extends uvm_sequencer #(dut_seqitem);//Component class--parameterized
+  `uvm_component_utils(dut_seqr)
+  
+  //New constructor
+  
+  function new(string name="dut_seqr",uvm_component parent)
+    super.new(name,parent);
+    `uvm_info("[SEQR]","Sequencer in Constructor",UVM_MEDIUM)
+  endfunction
+  
+  //Build Phase
+  
+  function void build_phase(uvm_phase phase);
+    super.build_phase(phase);
+    `uvm_info("[SEQR]","Sequencer in Build Phase",UVM_MEDIUM)
+  endfunction
+  
+endclass
+------------------------------------------------------------------------
+driver.sv
+------------------------------------------------------------------------
+class dut_driver extends uvm_driver #(dut_seqitem);//Componnet class-parameterized
+  `uvm_component_utils(dut_driver)
+  
+  dut_seqitem seq;
+  virtual dut_interface intf;//interface
+  
+  //New constructor
+  function new(string name="dut_driver",uvm_component parent);
+    super.new(name,parent);
+    `uvm_info("[DRV]","Constructor in driver",UVM_MEDIUM)
+  endfunction
+  //Build Phase
+  function void build_phase(uvm_phase phase);
+    super.build_phase(phase);
+    seq=dut_interface::type_id::create("seq");
+    if(!(uvm_config_db #(virtual dut_interface)::get(this,"","intf",intf)))
+      `uvm_error("[DRV]","Driver Interface is failed");
+  endfunction
+  //Run Phase
+  task run_phase(uvm_phase phase);
+    super.run_phase(phase);
+    //Seq_item_ports -- Handshaking 
+    seq_item_port.get_next_item(seq);
+    //Drive the signals using interface
+    seq_item_port.item_done();
+  endtask
+endclass
+------------------------------------------------------------------------
+monitor.sv
+------------------------------------------------------------------------
+class dut_monitor extends uvm_monitor;//Componnet class
+  `uvm_component_utils(dut_monitor)
+  
+  dut_seqitem seq;
+  virtual dut_interface intf;//interface
+  uvm_analysis_port#(dut_seqitem) ap;//analysis port
+  
+  //New constructor
+  function new(string name="dut_monitor",uvm_component parent);
+    super.new(name,parent);
+    ap=new("ap",this);
+    `uvm_info("[MON]","Constructor in monitor",UVM_MEDIUM)
+  endfunction
+  //Build Phase
+  function void build_phase(uvm_phase phase);
+    super.build_phase(phase);
+    seq=dut_interface::type_id::create("seq");
+    if(!(uvm_config_db #(virtual dut_interface)::get(this,"","intf",intf)))
+      `uvm_error("[MON]","Monitor Interface is failed");
+  endfunction
+  //Run Phase
+  task run_phase(uvm_phase phase);
+    super.run_phase(phase);
+    //monitors the signals using interface
+    ap.write(seq);
+  endtask
+endclass
+
+-----------------------------------------------------------------
+scoreboard.sv
+-----------------------------------------------------------------
+class dut_scoreboard extends uvm_scoreboard;
+  `uvm_component_utils(dut_scoreboard)
+  
+  dut_seqitem seq;
+  uvm_analysis_imp #(dut_seqitem,dut_scoreboard) imp;
+  
+  //create temporary memory for comparing desired and actual values
+  
+  function new(string name="dut_scoreboard",uvm_component parent);
+    super.new(name,parent);
+    imp=new("imp",this);
+    `uvm_info("[SCO]","Scoreboard in Constructor",UVM_MEDIUM)
+    
+  endfunction
+  //Build Phase
+  function void build_phase(uvm_phase phase);
+    super.build_phase(phase);
+    seq=dut_seqitem::type_id::create("seq");
+  endfunction
+  
+  //Write function which was called in monitor
+  
+  function void write(dut_seqitem seq1);
+    seq1=seq;
+    
+    //write logic for comparing the values 
+  endfunction
+  //Run Phase --optional
+endclass
+-------------------------------------------------------------------------
+subscriber.sv
+-------------------------------------------------------------------------
+class dut_cov extends uvm_subscriber;
+  //write coverage 
+endclass
+
+-------------------------------------------------------------------------
+agent.sv
+-------------------------------------------------------------------------
+class dut_agent extends uvm_agent;
+  `uvm_component_utils(dut_agent)
+  //Agent -- driver,monitor,sequencer
+  dut_sequencer seqr;
+  dut_driver drv;
+  dut_monitor mon;
+  //New constructor
+  function new(string name="dut_agent",uvm_component parent);
+    super.new(name,parent);
+    `uvm_info("[AGENT]","Agent in constructor",UVM_MEDIUM)
+  endfunction
+  
+  //Build phase
+  
+  function void build_phase(uvm_phase phase);
+    super.build_phase(phase);
+    `uvm_info("[AGENT]","Agent in Build phase",UVM_MEDIUM)
+    seqr=dut_sequencer::type_id::create("seqr",this);
+    drv=dut_driver::type_id::create("drv",this);
+    mon=dut_monitor::type_id::create("mon",this);
+  endfunction
+  //connect phase
+  function void connect_phase(uvm_phase phase);
+    super.connect_phase(phase);
+    `uvm_info("[AGENT]","Agent in connect phase",UVM_MEDIUM)
+    //connecting driver and seqr
+    drv.seq_item_port.connect(seqr.seq_item_export);
+  endfunction
+  
+endclass
+-----------------------------------------------------------------------
+environment.sv
+-----------------------------------------------------------------------
+class dut_env extends uvm_env;
+  `uvm_components_utils(dut_env);
+  
+  dut_agent agt;
+  dut_score sc;
+  dut_cov cov;
+  
+  //New constructor
+  
+  function new(string name="dut_env",uvm_component parent);
+    super.new(name,parent);
+    `uvm_info("[ENV]","Env in constructor",UVM_MEDIUM)
+  endfunction
+  
+  //Build Phase
+  
+  function void build_phase(uvm_phase phase);
+    super.build_phase(phase);
+    `uvm_info("[ENV]","Env in Build Phase",UVM_MEDIUM)
+    agt=dut_agent::type_id::create("agt",this);
+    sc=dut_score::type_id::create("sc",this);
+    cov=dut_cov::type_id::create("cov",this);
+  endfunction
+  
+  //connect phase
+  
+  function void connect_phase(uvm_phase phase);
+    super.connect_phase(phase);
+    `uvm_info("[ENV]","Env in Connect Phase",UVM_MEDIUM)
+    
+    //Mon-Sc
+    
+    agt.mon.ap.connect(sc.imp);
+    
+    //Mon-COV
+    
+    agt.mon.ap.connect(cov.analysis_export);
+    
+  endfunction
+endclass
+    
+--------------------------------------------------------------------
+test.sv
+--------------------------------------------------------------------
+class dut_test extends uvm_test;
+  `uvm_component_utils(dut_test)
+  
+  dut_env env;
+  dut_seq seq;
+  
+  //New Constructor
+  
+  function new(string name="dut_test",uvm_component parent);
+    super.new(name,parent);
+    `uvm_info("[TEST]","Test in Constructor",UVM_MEDIUM)
+  endfunction
+  
+  //Build Phase
+  
+  function void build_phase(uvm_phase phase);
+    super.build_phase(phase);
+    `uvm_info("[TEST]","Test in Build Phase",UVM_MEDIUM)
+    env=dut_env::type_id::create("env",this);
+    seq=dut_seq::type_id::create("seq");
+  endfunction
+  
+  //Run Phase
+  
+  task run_phase(uvm_phase phase);
+    super.run_phase(phase);
+    phase.raise_objection(this);
+    //seq.count=10;
+    seq.start(env.agt.seqr);
+    phase.drop_objection(this);
+  endtask
+endclass
+  ---------------------------------------------------------------------------------
+      
+      
+       
+        
+        
+    
+  
+    
