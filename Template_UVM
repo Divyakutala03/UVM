@@ -169,22 +169,27 @@ class dut_driver extends uvm_driver #(dut_seqitem);//Componnet class-parameteriz
   //Build Phase
   function void build_phase(uvm_phase phase);
     super.build_phase(phase);
+    `uvm_info("[DRV]","Build Phase in driver",UVM_MEDIUM)
     if(!(uvm_config_db #(virtual dut_interface)::get(this,"","intf",intf)))
       `uvm_error("[DRV]","Driver Interface is failed");
   endfunction
   //Run Phase
   task run_phase(uvm_phase phase);
     super.run_phase(phase);
-    //Seq_item_ports -- Handshaking 
-    forever 
+    `uvm_info("[DRV]","Run Phase in driver",UVM_MEDIUM)
+    forever
       begin
- seq=dut_seqitem::type_id::create("seq");
+        seq=dut_seqitem::type_id::create("seq");
+    //Seq_item_ports -- Handshaking 
     seq_item_port.get_next_item(seq);
     //Drive the signals using interface
-    seq_item_port.item_done();
-    end
+        seq_item_port.item_done();
+      end
   endtask
 endclass
+      
+      
+       
 ------------------------------------------------------------------------
 monitor.sv
 ------------------------------------------------------------------------
@@ -204,18 +209,22 @@ class dut_monitor extends uvm_monitor;//Componnet class
   //Build Phase
   function void build_phase(uvm_phase phase);
     super.build_phase(phase);
-    seq=dut_interface::type_id::create("seq");
+    `uvm_info("[MON]","Build Phase in monitor",UVM_MEDIUM)
+    seq=dut_seqitem::type_id::create("seq");
     if(!(uvm_config_db #(virtual dut_interface)::get(this,"","intf",intf)))
       `uvm_error("[MON]","Monitor Interface is failed");
   endfunction
   //Run Phase
   task run_phase(uvm_phase phase);
     super.run_phase(phase);
+    `uvm_info("[MON]","Run Phase in monitor",UVM_MEDIUM)
+    forever begin
     //monitors the signals using interface
+    end
     ap.write(seq);
   endtask
 endclass
-
+      
 -----------------------------------------------------------------
 scoreboard.sv
 -----------------------------------------------------------------
